@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { Download, Filter, Loader2, Search } from "lucide-react";
@@ -20,6 +20,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { LeadRow } from "@/components/lead-row";
 import type { Lead } from "@/lib/types";
+import { apiExport, apiLeadsList } from "@/lib/api";
 
 const STATUSES = ["all", "new", "contacted", "replied", "interested", "closed", "rejected"] as const;
 const SITE_STATUSES = ["all", "none", "outdated", "not_mobile", "modern", "unknown"] as const;
@@ -44,18 +45,17 @@ export default function LeadsPage() {
   const [minScore, setMinScore] = useState(1);
   const [sort, setSort] = useState("score_desc");
 
-  async function load() {
+  function load() {
     setLoading(true);
-    const params = new URLSearchParams({
+    const res = apiLeadsList({
       q,
       category,
       location,
-      status,
-      website_status: siteStatus,
-      min_score: String(minScore),
-      sort,
+      status: status as any,
+      website_status: siteStatus as any,
+      min_score: minScore,
+      sort: sort as any,
     });
-    const res = await fetch(`/api/leads?${params.toString()}`).then((r) => r.json());
     setLeads(res.leads ?? []);
     setCategories(res.categories ?? []);
     setLocations(res.locations ?? []);
@@ -67,18 +67,17 @@ export default function LeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const exportHref = useMemo(() => {
-    const params = new URLSearchParams({
+  function exportNow() {
+    apiExport({
       q,
       category,
       location,
-      status,
-      website_status: siteStatus,
-      min_score: String(minScore),
-      sort,
+      status: status as any,
+      website_status: siteStatus as any,
+      min_score: minScore,
+      sort: sort as any,
     });
-    return `/api/export?${params.toString()}`;
-  }, [q, category, location, status, siteStatus, minScore, sort]);
+  }
 
   return (
     <PageTransition>
@@ -88,10 +87,8 @@ export default function LeadsPage() {
         description="Filter, sort, and export. Click any lead to open the full audit and outreach panel."
         actions={
           <>
-            <Button variant="outline" asChild>
-              <a href={exportHref}>
-                <Download className="h-4 w-4" /> Export CSV
-              </a>
+            <Button variant="outline" onClick={exportNow}>
+              <Download className="h-4 w-4" /> Export CSV
             </Button>
             <Button asChild>
               <Link href="/search">

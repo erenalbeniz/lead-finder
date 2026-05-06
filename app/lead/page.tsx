@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, use } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -49,6 +49,7 @@ import {
 } from "@/components/ui/tabs";
 import type { Lead, OutreachStatus } from "@/lib/types";
 import { cn, formatRelative, priorityColor, siteStatusColor, siteStatusLabel, statusColor } from "@/lib/utils";
+import { apiCheck, apiLeadDelete, apiLeadGet, apiLeadUpdate, apiOutreach } from "@/lib/api";
 
 const STATUS_OPTIONS: OutreachStatus[] = ["new", "contacted", "replied", "interested", "closed", "rejected"];
 
@@ -60,8 +61,17 @@ interface OutreachBundle {
   email: { subject: string; body: string };
 }
 
-export default function LeadDetailPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = use(params);
+export default function LeadDetailWrapper() {
+  return (
+    <Suspense fallback={<PageTransition><Skeleton className="h-12 w-1/2" /><Skeleton className="h-72" /></PageTransition>}>
+      <LeadDetailPage />
+    </Suspense>
+  );
+}
+
+function LeadDetailPage() {
+  const sp = useSearchParams();
+  const id = Number(sp.get("id"));
   const router = useRouter();
   const [lead, setLead] = useState<Lead | null>(null);
   const [loading, setLoading] = useState(true);
@@ -77,9 +87,9 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     notes: "",
   });
 
-  async function load() {
+  function load() {
     setLoading(true);
-    const data = await fetch(`/api/leads/${id}`).then((r) => r.json());
+    const data = apiLeadGet(id);
     if (data.lead) {
       setLead(data.lead);
       setEditing({
@@ -94,18 +104,13 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     setLoading(false);
   }
 
-  useEffect(() => { load(); }, [id]);
+  useEffect(() => { if (Number.isFinite(id) && id > 0) load(); }, [id]);
 
   async function runCheck(deep = false) {
     if (!lead) return;
     setChecking(true);
     try {
-      const res = await fetch("/api/check", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: lead.id, deep }),
-      });
-      const data = await res.json();
+      const data = await apiCheck({ lead_id: lead.id });
       if (data.lead) setLead(data.lead);
       toast.success(deep ? "Deep check complete" : "Website check complete");
     } catch (e: any) {
@@ -115,49 +120,35 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     }
   }
 
-  async function generate() {
+  function generate() {
     if (!lead) return;
     setGenerating(true);
     try {
-      const res = await fetch("/api/outreach", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ lead_id: lead.id }),
-      }).then((r) => r.json());
+      const res = apiOutreach({ lead_id: lead.id });
       setBundle(res.bundle);
     } finally {
       setGenerating(false);
     }
   }
 
-  async function saveEdits() {
+  function saveEdits() {
     if (!lead) return;
-    const res = await fetch(`/api/leads/${lead.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(editing),
-    });
-    const data = await res.json();
+    const data = apiLeadUpdate(lead.id, editing);
     if (data.lead) setLead(data.lead);
     toast.success("Saved");
   }
 
-  async function setStatus(s: OutreachStatus) {
+  function setStatus(s: OutreachStatus) {
     if (!lead) return;
-    const res = await fetch(`/api/leads/${lead.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ outreach_status: s }),
-    });
-    const data = await res.json();
+    const data = apiLeadUpdate(lead.id, { outreach_status: s });
     if (data.lead) setLead(data.lead);
     toast.success(`Marked as ${s}`);
   }
 
-  async function deleteLead() {
+  function deleteLead() {
     if (!lead) return;
     if (!confirm(`Delete ${lead.business_name}? This can't be undone.`)) return;
-    await fetch(`/api/leads/${lead.id}`, { method: "DELETE" });
+    apiLeadDelete(lead.id);
     toast.success("Lead deleted");
     router.push("/leads");
   }
@@ -167,7 +158,7 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
     toast.success(`${what} copied`);
   }
 
-  async function sendOutreach(kind: "whatsapp" | "email") {
+  function sendOutreach(kind: "whatsapp" | "email") {
     if (!lead || !bundle) return;
     if (kind === "whatsapp") {
       const phone = (lead.phone ?? "").replace(/[^\d+]/g, "");
@@ -180,12 +171,8 @@ export default function LeadDetailPage({ params }: { params: Promise<{ id: strin
       const to = lead.email ? encodeURIComponent(lead.email) : "";
       window.open(`mailto:${to}?subject=${subject}&body=${body}`, "_blank");
     }
-    await fetch("/api/outreach", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lead_id: lead.id, log: kind }),
-    });
-    if (lead.outreach_status === "new") await setStatus("contacted");
+    apiOutreach({ lead_id: lead.id, log: kind });
+    if (lead.outreach_status === "new") setStatus("contacted");
     load();
   }
 

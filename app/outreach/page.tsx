@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import type { Lead, OutreachStatus } from "@/lib/types";
 import { cn, priorityColor, siteStatusColor, siteStatusLabel, statusColor } from "@/lib/utils";
+import { apiLeadsList, apiLeadUpdate, apiOutreach } from "@/lib/api";
 
 interface OutreachBundle {
   problems: string[];
@@ -47,10 +48,11 @@ export default function OutreachPage() {
 
   useEffect(() => {
     setLoading(true);
-    fetch(`/api/leads?status=${filter}&sort=score_desc&limit=50`)
-      .then((r) => r.json())
-      .then((d) => { setLeads(d.leads ?? []); setActiveIdx(0); setBundle(null); })
-      .finally(() => setLoading(false));
+    const d = apiLeadsList({ status: filter as any, sort: "score_desc", limit: 50 });
+    setLeads(d.leads ?? []);
+    setActiveIdx(0);
+    setBundle(null);
+    setLoading(false);
   }, [filter]);
 
   const active = leads[activeIdx];
@@ -58,14 +60,12 @@ export default function OutreachPage() {
   useEffect(() => {
     if (!active) { setBundle(null); return; }
     setGenerating(true);
-    fetch("/api/outreach", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lead_id: active.id }),
-    })
-      .then((r) => r.json())
-      .then((d) => setBundle(d.bundle))
-      .finally(() => setGenerating(false));
+    try {
+      const d = apiOutreach({ lead_id: active.id });
+      setBundle(d.bundle);
+    } finally {
+      setGenerating(false);
+    }
   }, [active?.id]);
 
   function next() { if (activeIdx < leads.length - 1) setActiveIdx(activeIdx + 1); }
@@ -88,17 +88,9 @@ export default function OutreachPage() {
       const to = active.email ? encodeURIComponent(active.email) : "";
       window.open(`mailto:${to}?subject=${subject}&body=${body}`, "_blank");
     }
-    await fetch("/api/outreach", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lead_id: active.id, log: kind }),
-    });
+    apiOutreach({ lead_id: active.id, log: kind });
     if (active.outreach_status === "new") {
-      await fetch(`/api/leads/${active.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ outreach_status: "contacted" }),
-      });
+      apiLeadUpdate(active.id, { outreach_status: "contacted" });
       setLeads((arr) => arr.map((l) => l.id === active.id ? { ...l, outreach_status: "contacted" } : l));
     }
   }
@@ -183,7 +175,7 @@ export default function OutreachPage() {
               <div>
                 <div className="text-[10px] uppercase tracking-[0.2em] text-muted-foreground">Composing for</div>
                 <CardTitle className="mt-1">
-                  {active ? <Link href={`/leads/${active.id}`} className="hover:text-violet-300 transition-colors">{active.business_name}</Link> : "—"}
+                  {active ? <Link href={`/lead?id=${active.id}`} className="hover:text-violet-300 transition-colors">{active.business_name}</Link> : "—"}
                 </CardTitle>
                 <CardDescription>
                   {active?.category ?? ""}{active?.location ? ` · ${active.location}` : ""}

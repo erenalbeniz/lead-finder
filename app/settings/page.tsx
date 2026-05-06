@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { apiSettingsGet, apiSettingsSet } from "@/lib/api";
 
 interface SettingsData {
   google_places_api_key: string | null;
@@ -33,38 +34,28 @@ export default function SettingsPage() {
   const [keyDirty, setKeyDirty] = useState(false);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((d) => {
-        setData({
-          google_places_api_key: d.settings.google_places_api_key ?? "",
-          sender_name: d.settings.sender_name ?? "",
-          studio_name: d.settings.studio_name ?? "",
-          default_location: d.settings.default_location ?? "",
-        });
-        setEnv(d.env);
-      })
-      .finally(() => setLoading(false));
+    const d = apiSettingsGet();
+    setData({
+      google_places_api_key: d.settings.google_places_api_key ?? "",
+      sender_name: d.settings.sender_name ?? "",
+      studio_name: d.settings.studio_name ?? "",
+      default_location: d.settings.default_location ?? "",
+    });
+    setEnv(d.env);
+    setLoading(false);
   }, []);
 
-  async function save() {
+  function save() {
     setSaving(true);
     const payload: any = {
       sender_name: data.sender_name ?? "",
       studio_name: data.studio_name ?? "",
       default_location: data.default_location ?? "",
     };
-    if (keyDirty && data.google_places_api_key) payload.google_places_api_key = data.google_places_api_key;
-    const res = await fetch("/api/settings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    apiSettingsSet(payload);
     setSaving(false);
-    if (res.ok) {
-      toast.success("Settings saved");
-      setKeyDirty(false);
-    } else toast.error("Save failed");
+    toast.success("Settings saved");
+    setKeyDirty(false);
   }
 
   return (

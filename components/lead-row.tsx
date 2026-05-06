@@ -16,7 +16,7 @@ export function LeadRow({ lead, index = 0, dense = false }: { lead: Lead; index?
       transition={{ duration: 0.4, delay: index * 0.025, ease: [0.22, 1, 0.36, 1] }}
     >
       <Link
-        href={`/leads/${lead.id}`}
+        href={`/lead?id=${lead.id}`}
         className="group relative grid grid-cols-[auto_1fr_auto] items-center gap-4 rounded-xl border border-white/[0.05] bg-white/[0.02] hover:bg-white/[0.045] hover:border-white/10 transition-all px-4 py-3"
       >
         <div className="relative">

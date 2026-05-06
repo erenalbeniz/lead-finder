@@ -12,3 +12,5 @@ data/*.db-journal
 data/*.db-shm
 data/*.db-wal
 .next-types
+out
+deploy.yml

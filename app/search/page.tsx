@@ -34,6 +34,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { MALTA_CATEGORIES, MALTA_LOCATIONS } from "@/lib/places";
 import type { SearchHit } from "@/lib/types";
+import { apiCheck, apiLeadCreate, apiSearch } from "@/lib/api";
 
 interface Hit extends SearchHit { already_saved?: boolean }
 
@@ -58,16 +59,10 @@ export default function SearchPage() {
     setLoading(true);
     setResults([]);
     try {
-      const res = await fetch("/api/search", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          category: effectiveCategory,
-          location: location === ALL_MALTA ? "" : location,
-        }),
+      const data = await apiSearch({
+        category: effectiveCategory,
+        location: location === ALL_MALTA ? "" : location,
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Search failed");
       setResults(data.results ?? []);
       const preset = new Set<string>(
         (data.results ?? []).filter((r: Hit) => r.already_saved).map((r: Hit) => r.place_id)
@@ -85,40 +80,31 @@ export default function SearchPage() {
     setSavingIds((s) => new Set(s).add(hit.place_id));
     try {
       let issues: string[] | undefined;
-      let website_status: string | undefined;
+      let website_status: any | undefined;
       if (autoCheck) {
-        const cr = await fetch("/api/check", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url: hit.website ?? "" }),
-        }).then((r) => r.json());
+        const cr = await apiCheck({ url: hit.website ?? "" });
         issues = cr.check?.issues;
         website_status = cr.check?.status;
       } else if (!hit.website) {
         issues = ["No website at all"];
         website_status = "none";
       }
-      const res = await fetch("/api/leads", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          place_id: hit.place_id,
-          business_name: hit.business_name,
-          category: hit.category,
-          location: hit.location,
-          phone: hit.phone,
-          website: hit.website,
-          google_maps_url: hit.google_maps_url,
-          rating: hit.rating,
-          user_ratings_total: hit.user_ratings_total,
-          lat: hit.lat,
-          lng: hit.lng,
-          issues,
-          website_status,
-          last_checked_at: autoCheck ? Date.now() : undefined,
-        }),
+      apiLeadCreate({
+        place_id: hit.place_id,
+        business_name: hit.business_name,
+        category: hit.category,
+        location: hit.location,
+        phone: hit.phone,
+        website: hit.website,
+        google_maps_url: hit.google_maps_url,
+        rating: hit.rating,
+        user_ratings_total: hit.user_ratings_total,
+        lat: hit.lat,
+        lng: hit.lng,
+        issues,
+        website_status,
+        last_checked_at: autoCheck ? Date.now() : undefined,
       });
-      if (!res.ok) throw new Error("Save failed");
       setSavedIds((s) => new Set(s).add(hit.place_id));
       toast.success(`Saved ${hit.business_name}`);
     } catch (e: any) {

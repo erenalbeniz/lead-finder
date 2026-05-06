@@ -23,6 +23,7 @@ import { StatCard } from "@/components/dashboard/stat-card";
 import { ActivityChart, ScoreDistribution, StatusBreakdown } from "@/components/dashboard/charts";
 import { LeadRow } from "@/components/lead-row";
 import type { Lead } from "@/lib/types";
+import { apiExport, apiLeadsList, apiLeadsStats } from "@/lib/api";
 
 interface Stats {
   totals: Record<string, number>;
@@ -38,15 +39,11 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/leads?stats=1").then((r) => r.json()),
-      fetch("/api/leads?sort=score_desc&limit=6").then((r) => r.json()),
-    ])
-      .then(([s, l]) => {
-        setStats(s.stats);
-        setTopLeads(l.leads ?? []);
-      })
-      .finally(() => setLoading(false));
+    const s = apiLeadsStats();
+    const l = apiLeadsList({ sort: "score_desc", limit: 6 });
+    setStats(s.stats as Stats);
+    setTopLeads(l.leads);
+    setLoading(false);
   }, []);
 
   const t = stats?.totals ?? {};
@@ -59,10 +56,8 @@ export default function DashboardPage() {
         description="Find local businesses that need a new or improved website. Audit, score, and reach out — all from one calm, premium dashboard."
         actions={
           <>
-            <Button variant="outline" asChild>
-              <a href="/api/export">
-                <Download className="h-4 w-4" /> Export CSV
-              </a>
+            <Button variant="outline" onClick={() => apiExport({})}>
+              <Download className="h-4 w-4" /> Export CSV
             </Button>
             <Button asChild>
               <Link href="/search">

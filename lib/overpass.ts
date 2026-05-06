@@ -11,11 +11,8 @@ import type { SearchHit } from "./types";
  *  - https://wiki.openstreetmap.org/wiki/Map_features
  */
 
-const OVERPASS_URL =
-  process.env.OVERPASS_URL || "https://overpass-api.de/api/interpreter";
-
-const NOMINATIM_URL =
-  process.env.NOMINATIM_URL || "https://nominatim.openstreetmap.org/search";
+const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
+const NOMINATIM_URL = "https://nominatim.openstreetmap.org/search";
 
 // Malta + Gozo + Comino bounding box (south, west, north, east)
 const MALTA_BBOX = "35.78,14.16,36.10,14.58";
@@ -39,7 +36,7 @@ async function bboxForLocation(location: string): Promise<string> {
 
   try {
     const res = await fetch(url.toString(), {
-      headers: { "User-Agent": UA, "Accept": "application/json" },
+      headers: { "Accept": "application/json" },
       cache: "no-store",
     });
     if (!res.ok) throw new Error(`Nominatim ${res.status}`);
@@ -140,7 +137,6 @@ export async function searchOverpass(opts: OverpassSearchOptions): Promise<Searc
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": UA,
     },
     body: "data=" + encodeURIComponent(query),
     cache: "no-store",
