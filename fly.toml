@@ -1,0 +1,26 @@
+# Fly.io config — `fly launch --copy-config --no-deploy` to claim a unique app name,
+# then `fly volumes create leadfinder_data --size 1 --region ams` and `fly deploy`.
+app = "leadfinder"
+primary_region = "ams"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  LEADFINDER_DATA_DIR = "/data"
+
+[[mounts]]
+  source = "leadfinder_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
