@@ -15,6 +15,7 @@ import {
   Phone,
   Sparkles,
   Zap,
+  Target,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { PageTransition } from "@/components/page-transition";
@@ -35,14 +36,24 @@ import { Badge } from "@/components/ui/badge";
 import { MALTA_CATEGORIES, MALTA_LOCATIONS } from "@/lib/places";
 import type { SearchHit } from "@/lib/types";
 import { apiCheck, apiLeadCreate, apiSearch } from "@/lib/api";
+import { SERVICES, findService, matchingServices, type ServiceDef, type ServiceHit } from "@/lib/services";
+import { cn } from "@/lib/utils";
 
-interface Hit extends SearchHit { already_saved?: boolean }
+interface Hit extends SearchHit {
+  already_saved?: boolean;
+  email?: string | null;
+  facebook_url?: string | null;
+  instagram_url?: string | null;
+}
 
 export default function SearchPage() {
   const [category, setCategory] = useState("restaurant");
   const [customCategory, setCustomCategory] = useState("");
   const [location, setLocation] = useState("Sliema");
   const ALL_MALTA = "__all__";
+  const ANY_SERVICE = "__any__";
+  const [serviceId, setServiceId] = useState<string>(ANY_SERVICE);
+  const [onlyMatches, setOnlyMatches] = useState(false);
   const [autoCheck, setAutoCheck] = useState(true);
   const [results, setResults] = useState<Hit[]>([]);
   const [loading, setLoading] = useState(false);
@@ -50,6 +61,22 @@ export default function SearchPage() {
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
 
   const effectiveCategory = customCategory.trim() || category;
+  const activeService: ServiceDef | null = serviceId === ANY_SERVICE ? null : findService(serviceId);
+
+  const visibleResults = (() => {
+    if (!activeService) return results;
+    const sorted = [...results].sort((a, b) => {
+      const am = activeService.match(a as ServiceHit) ? 1 : 0;
+      const bm = activeService.match(b as ServiceHit) ? 1 : 0;
+      return bm - am;
+    });
+    if (!onlyMatches) return sorted;
+    return sorted.filter((r) => activeService.match(r as ServiceHit));
+  })();
+
+  const matchCount = activeService
+    ? results.filter((r) => activeService.match(r as ServiceHit)).length
+    : 0;
 
   async function runSearch() {
     if (!effectiveCategory) {
@@ -89,12 +116,18 @@ export default function SearchPage() {
         issues = ["No website at all"];
         website_status = "none";
       }
+      const opportunityNote = activeService
+        ? `Service opportunity: ${activeService.label}${activeService.match(hit as ServiceHit) ? " (strong fit)" : ""}`
+        : null;
       apiLeadCreate({
         place_id: hit.place_id,
         business_name: hit.business_name,
         category: hit.category,
         location: hit.location,
         phone: hit.phone,
+        email: hit.email ?? null,
+        facebook_url: hit.facebook_url ?? null,
+        instagram_url: hit.instagram_url ?? null,
         website: hit.website,
         google_maps_url: hit.google_maps_url,
         rating: hit.rating,
@@ -103,6 +136,7 @@ export default function SearchPage() {
         lng: hit.lng,
         issues,
         website_status,
+        notes: opportunityNote,
         last_checked_at: autoCheck ? Date.now() : undefined,
       });
       setSavedIds((s) => new Set(s).add(hit.place_id));
@@ -119,7 +153,7 @@ export default function SearchPage() {
   }
 
   async function saveAllUnsaved() {
-    const targets = results.filter((r) => !savedIds.has(r.place_id));
+    const targets = visibleResults.filter((r) => !savedIds.has(r.place_id));
     if (!targets.length) return;
     toast.message(`Saving ${targets.length} leads…`, {
       description: autoCheck ? "Running website checks in parallel" : "Quick save (no checks)",
@@ -181,20 +215,72 @@ export default function SearchPage() {
             </div>
           </div>
 
-          <div className="mt-5 flex items-center justify-between flex-wrap gap-3">
-            <div className="flex items-center gap-3">
-              <Switch checked={autoCheck} onCheckedChange={setAutoCheck} id="auto-check" />
-              <label htmlFor="auto-check" className="text-sm text-muted-foreground inline-flex items-center gap-2">
-                <Zap className="h-3.5 w-3.5 text-violet-300" />
-                Auto-run website check on save
-              </label>
+          <div className="mt-5 grid grid-cols-1 md:grid-cols-12 gap-4 items-end pt-5 border-t border-white/[0.06]">
+            <div className="md:col-span-5 space-y-2">
+              <Label className="inline-flex items-center gap-2">
+                <Target className="h-3.5 w-3.5 text-violet-300" />
+                Service to sell
+              </Label>
+              <Select value={serviceId} onValueChange={setServiceId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ANY_SERVICE}>Any service — show every lead</SelectItem>
+                  {SERVICES.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="mr-2">{s.emoji}</span>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {activeService && (
+                <p className="text-xs text-muted-foreground leading-relaxed pt-1">
+                  {activeService.blurb}
+                </p>
+              )}
             </div>
-            {results.length > 0 && (
-              <Button variant="outline" onClick={saveAllUnsaved}>
-                <Plus className="h-4 w-4" /> Save all new
-              </Button>
-            )}
+
+            <div className="md:col-span-4 space-y-2">
+              <div className="flex items-center gap-3">
+                <Switch
+                  checked={onlyMatches}
+                  onCheckedChange={setOnlyMatches}
+                  id="only-matches"
+                  disabled={!activeService}
+                />
+                <label htmlFor="only-matches" className="text-sm text-muted-foreground">
+                  Only show businesses needing this service
+                </label>
+              </div>
+              <div className="flex items-center gap-3">
+                <Switch checked={autoCheck} onCheckedChange={setAutoCheck} id="auto-check" />
+                <label htmlFor="auto-check" className="text-sm text-muted-foreground inline-flex items-center gap-2">
+                  <Zap className="h-3.5 w-3.5 text-violet-300" />
+                  Auto-run website check on save
+                </label>
+              </div>
+            </div>
+
+            <div className="md:col-span-3 flex md:justify-end">
+              {results.length > 0 && (
+                <Button variant="outline" onClick={saveAllUnsaved} className="w-full md:w-auto">
+                  <Plus className="h-4 w-4" /> Save all{onlyMatches && activeService ? " matches" : " new"}
+                </Button>
+              )}
+            </div>
           </div>
+
+          {activeService && results.length > 0 && (
+            <div className="mt-4 flex items-center justify-between flex-wrap gap-2 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-2">
+                <Target className="h-3.5 w-3.5 text-emerald-300" />
+                <span className="text-emerald-300 font-medium">{matchCount}</span>
+                <span>of {results.length} businesses look like a strong fit for {activeService.label}</span>
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -203,7 +289,13 @@ export default function SearchPage() {
           Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[180px] rounded-2xl" />)}
 
         <AnimatePresence>
-          {!loading && results.map((r, i) => (
+          {!loading && visibleResults.map((r, i) => {
+            const matches = matchingServices(r as ServiceHit);
+            const isActiveMatch = activeService ? activeService.match(r as ServiceHit) : false;
+            const topMatches = activeService
+              ? [activeService, ...matches.filter((m) => m.id !== activeService.id)].slice(0, 4)
+              : matches.slice(0, 3);
+            return (
             <motion.div
               key={r.place_id}
               initial={{ opacity: 0, y: 12 }}
@@ -211,7 +303,10 @@ export default function SearchPage() {
               exit={{ opacity: 0, y: -8 }}
               transition={{ duration: 0.4, delay: i * 0.03, ease: [0.22, 1, 0.36, 1] }}
             >
-              <Card className="h-full group hover:translate-y-[-2px] transition-transform">
+              <Card className={cn(
+                "h-full group hover:translate-y-[-2px] transition-transform",
+                isActiveMatch && "ring-1 ring-emerald-400/40"
+              )}>
                 <CardHeader>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
@@ -248,6 +343,29 @@ export default function SearchPage() {
                     )}
                   </div>
 
+                  {topMatches.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-1">
+                      {topMatches.map((s) => {
+                        const isActive = activeService?.id === s.id;
+                        return (
+                          <span
+                            key={s.id}
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+                              isActive
+                                ? "border-emerald-400/40 bg-emerald-400/10 text-emerald-200"
+                                : "border-white/10 bg-white/[0.04] text-muted-foreground"
+                            )}
+                            title={s.blurb}
+                          >
+                            <span>{s.emoji}</span>
+                            {s.short}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2 pt-2">
                     {savedIds.has(r.place_id) ? (
                       <Button variant="outline" disabled className="flex-1">
@@ -280,7 +398,8 @@ export default function SearchPage() {
                 </CardContent>
               </Card>
             </motion.div>
-          ))}
+            );
+          })}
         </AnimatePresence>
       </div>
 
@@ -292,6 +411,18 @@ export default function SearchPage() {
           <div className="font-display text-lg font-semibold">Pick a category and run a search</div>
           <p className="text-sm text-muted-foreground mt-1">
             Searches are biased to Malta. Try "restaurant in Sliema" or "dentist in Valletta".
+          </p>
+        </Card>
+      )}
+
+      {!loading && results.length > 0 && visibleResults.length === 0 && activeService && onlyMatches && (
+        <Card className="text-center p-10">
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-xl bg-gradient-to-br from-emerald-400 to-cyan-400 mb-3">
+            <Target className="h-5 w-5 text-white" />
+          </div>
+          <div className="font-display text-lg font-semibold">No strong fits for {activeService.label} in this batch</div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Try a different category or location, or turn off "Only show businesses needing this service" to review the full list.
           </p>
         </Card>
       )}
