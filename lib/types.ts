@@ -33,6 +33,7 @@ export interface Lead {
   created_at: number;
   updated_at: number;
   last_checked_at: number | null;
+  service_id: string | null;
 }
 
 export interface LeadInput {
@@ -57,6 +58,7 @@ export interface LeadInput {
   lat?: number | null;
   lng?: number | null;
   last_checked_at?: number | null;
+  service_id?: string | null;
 }
 
 export interface SearchHit {

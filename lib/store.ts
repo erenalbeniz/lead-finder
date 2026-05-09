@@ -162,6 +162,7 @@ export function upsertLead(input: LeadInput): Lead {
         lat: input.lat ?? existing.lat,
         lng: input.lng ?? existing.lng,
         last_checked_at: input.last_checked_at ?? existing.last_checked_at,
+        service_id: input.service_id ?? existing.service_id ?? null,
         updated_at: now,
       };
       items[idx] = merged;
@@ -195,6 +196,7 @@ export function upsertLead(input: LeadInput): Lead {
     created_at: now,
     updated_at: now,
     last_checked_at: input.last_checked_at ?? null,
+    service_id: input.service_id ?? null,
   };
   items.push(lead);
   write(KEYS.leads, items);
@@ -230,6 +232,7 @@ export function updateLead(id: number, patch: Partial<Lead> & { issues?: string[
       lat: patch.lat,
       lng: patch.lng,
       last_checked_at: patch.last_checked_at,
+      service_id: patch.service_id,
     }),
     updated_at: Date.now(),
   };

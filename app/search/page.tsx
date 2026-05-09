@@ -35,7 +35,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { MALTA_CATEGORIES, MALTA_LOCATIONS } from "@/lib/places";
 import type { SearchHit } from "@/lib/types";
-import { apiCheck, apiLeadCreate, apiSearch } from "@/lib/api";
+import { apiCheck, apiLeadCreate, apiOutreach, apiSearch } from "@/lib/api";
 import { SERVICES, findService, matchingServices, type ServiceDef, type ServiceHit } from "@/lib/services";
 import { cn } from "@/lib/utils";
 
@@ -116,10 +116,7 @@ export default function SearchPage() {
         issues = ["No website at all"];
         website_status = "none";
       }
-      const opportunityNote = activeService
-        ? `Service opportunity: ${activeService.label}${activeService.match(hit as ServiceHit) ? " (strong fit)" : ""}`
-        : null;
-      apiLeadCreate({
+      const { lead } = apiLeadCreate({
         place_id: hit.place_id,
         business_name: hit.business_name,
         category: hit.category,
@@ -136,11 +133,22 @@ export default function SearchPage() {
         lng: hit.lng,
         issues,
         website_status,
-        notes: opportunityNote,
+        service_id: activeService?.id ?? null,
         last_checked_at: autoCheck ? Date.now() : undefined,
       });
       setSavedIds((s) => new Set(s).add(hit.place_id));
-      toast.success(`Saved ${hit.business_name}`);
+      if (activeService) {
+        try {
+          apiOutreach({ lead_id: lead.id, log: "draft", service_id: activeService.id });
+          toast.success(`Saved ${hit.business_name}`, {
+            description: `Drafted ${activeService.label} email + WhatsApp — open the lead to send`,
+          });
+        } catch {
+          toast.success(`Saved ${hit.business_name}`);
+        }
+      } else {
+        toast.success(`Saved ${hit.business_name}`);
+      }
     } catch (e: any) {
       toast.error(e.message);
     } finally {

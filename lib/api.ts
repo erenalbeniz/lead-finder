@@ -20,6 +20,7 @@ import { searchOverpass as searchOverpassClient } from "./overpass";
 import { checkWebsiteClient } from "./checker-client";
 import { generateOutreach } from "./outreach";
 import { scoreFromLead } from "./scoring";
+import { findService } from "./services";
 
 /**
  * Drop-in replacement for the previous `/api/*` HTTP routes — same return
@@ -117,6 +118,7 @@ export function apiLeadCreate(input: LeadInput): { lead: Lead } {
     created_at: 0,
     updated_at: 0,
     last_checked_at: input.last_checked_at ?? null,
+    service_id: input.service_id ?? null,
   };
   const score = scoreFromLead(placeholder);
   const lead = upsertLead({ ...input, priority_score: score });
@@ -166,16 +168,28 @@ export async function apiCheck(args: {
   return { check: { status: result.status, issues: result.issues }, lead };
 }
 
-export function apiOutreach(args: { lead_id: number; log?: "whatsapp" | "email" }) {
+export function apiOutreach(args: { lead_id: number; log?: "whatsapp" | "email" | "draft"; service_id?: string | null }) {
   const lead = getLead(args.lead_id);
   if (!lead) throw new Error("Lead not found");
   const settings = getAllSettings();
+  const serviceId = args.service_id ?? lead.service_id ?? null;
+  const service = findService(serviceId);
   const bundle = generateOutreach(lead, {
     senderName: settings.sender_name,
     studioName: settings.studio_name,
+    service,
   });
   if (args.log === "whatsapp") logOutreach(args.lead_id, "whatsapp", bundle.whatsapp);
   if (args.log === "email") logOutreach(args.lead_id, "email", `${bundle.email.subject}\n\n${bundle.email.body}`);
+  if (args.log === "draft") {
+    const tag = service ? ` (${service.label})` : "";
+    logOutreach(
+      args.lead_id,
+      `draft-email${tag}`,
+      `${bundle.email.subject}\n\n${bundle.email.body}`,
+    );
+    logOutreach(args.lead_id, `draft-whatsapp${tag}`, bundle.whatsapp);
+  }
   return { bundle };
 }
 
