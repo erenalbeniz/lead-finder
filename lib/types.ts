@@ -81,3 +81,13 @@ export interface SiteCheckResult {
   loadMs?: number | null;
   htmlBytes?: number | null;
 }
+
+export interface SavedSearch {
+  id: number;
+  name: string;
+  category: string;
+  location: string;
+  service_id: string | null;
+  only_matches: boolean;
+  created_at: number;
+}

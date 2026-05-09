@@ -3,19 +3,25 @@
 import type { Lead, LeadInput, OutreachStatus, SearchHit, WebsiteStatus } from "./types";
 import {
   deleteLead,
+  deleteSavedSearch,
   distinctCategories,
   distinctLocations,
+  getDraft,
   getLead,
   getLeadByPlaceId,
+  leadHasDraft,
   leadStats,
   listLeads,
   listOutreachLog,
+  listSavedSearches,
   logOutreach,
+  saveSavedSearch,
   upsertLead,
   updateLead,
   getAllSettings,
   setSetting,
 } from "./store";
+import type { SavedSearch } from "./types";
 import { searchOverpass as searchOverpassClient } from "./overpass";
 import { checkWebsiteClient } from "./checker-client";
 import { generateOutreach } from "./outreach";
@@ -60,6 +66,7 @@ export interface ListLeadsParams {
   location?: string;
   status?: OutreachStatus | "all";
   website_status?: WebsiteStatus | "all";
+  service_id?: string | "all";
   min_score?: number;
   sort?: "score_desc" | "score_asc" | "recent" | "name";
   limit?: number;
@@ -77,6 +84,7 @@ export function apiLeadsList(params: ListLeadsParams): {
     location: params.location,
     status: params.status,
     websiteStatus: params.website_status,
+    serviceId: params.service_id,
     minScore: params.min_score,
     sort: params.sort,
     limit: params.limit ?? 200,
@@ -177,6 +185,7 @@ export function apiOutreach(args: { lead_id: number; log?: "whatsapp" | "email" 
   const bundle = generateOutreach(lead, {
     senderName: settings.sender_name,
     studioName: settings.studio_name,
+    bookingLink: settings.booking_link,
     service,
   });
   if (args.log === "whatsapp") logOutreach(args.lead_id, "whatsapp", bundle.whatsapp);
@@ -201,9 +210,43 @@ export function apiSettingsGet() {
       sender_name: all.sender_name ?? null,
       studio_name: all.studio_name ?? null,
       default_location: all.default_location ?? null,
+      booking_link: all.booking_link ?? null,
     },
     env: { has_env_key: false, enable_playwright: false },
   };
+}
+
+// ---------- Saved searches ----------
+export function apiSavedSearchesList(): { searches: SavedSearch[] } {
+  return { searches: listSavedSearches() };
+}
+
+export function apiSavedSearchSave(input: Omit<SavedSearch, "id" | "created_at">): { search: SavedSearch } {
+  return { search: saveSavedSearch(input) };
+}
+
+export function apiSavedSearchDelete(id: number): { ok: true } {
+  deleteSavedSearch(id);
+  return { ok: true };
+}
+
+// ---------- Drafts ----------
+export function apiLeadDraft(lead_id: number): {
+  email: { subject: string; body: string } | null;
+  whatsapp: string | null;
+} {
+  const e = getDraft(lead_id, "draft-email");
+  const w = getDraft(lead_id, "draft-whatsapp");
+  let email: { subject: string; body: string } | null = null;
+  if (e) {
+    const [subjectLine, ...bodyLines] = e.message.split("\n\n");
+    email = { subject: subjectLine ?? "", body: bodyLines.join("\n\n") };
+  }
+  return { email, whatsapp: w?.message ?? null };
+}
+
+export function apiLeadHasDraft(lead_id: number): boolean {
+  return leadHasDraft(lead_id);
 }
 
 export function apiSettingsSet(payload: Record<string, string | undefined>) {

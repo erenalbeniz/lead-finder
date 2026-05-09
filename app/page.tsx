@@ -13,6 +13,8 @@ import {
   ArrowRight,
   Search as SearchIcon,
   Download,
+  Target,
+  Clock,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { PageTransition } from "@/components/page-transition";
@@ -24,13 +26,16 @@ import { ActivityChart, ScoreDistribution, StatusBreakdown } from "@/components/
 import { LeadRow } from "@/components/lead-row";
 import type { Lead } from "@/lib/types";
 import { apiExport, apiLeadsList, apiLeadsStats } from "@/lib/api";
+import { findService } from "@/lib/services";
 
 interface Stats {
   totals: Record<string, number>;
   byCategory: { name: string; value: number }[];
   byStatus: { name: string; value: number }[];
   byScore: { score: number; count: number }[];
+  byService: { service_id: string; value: number }[];
   activity: { day: string; created: number; checked: number }[];
+  followUps: Lead[];
 }
 
 export default function DashboardPage() {
@@ -112,6 +117,83 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {loading ? <Skeleton className="h-[220px]" /> : <StatusBreakdown data={stats!.byStatus} />}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
+            <div>
+              <CardTitle className="inline-flex items-center gap-2">
+                <Target className="h-4 w-4 text-emerald-300" /> Top services to sell
+              </CardTitle>
+              <CardDescription>Where your live opportunities sit</CardDescription>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[40px]" />)
+            ) : !stats?.byService?.length ? (
+              <p className="text-sm text-muted-foreground">
+                No services tagged yet. Pick a "Service to sell" on the search page when saving leads.
+              </p>
+            ) : (
+              stats.byService.map((row, i) => {
+                const svc = findService(row.service_id);
+                if (!svc) return null;
+                const max = stats.byService[0]?.value || 1;
+                const pct = Math.round((row.value / max) * 100);
+                return (
+                  <Link
+                    key={row.service_id}
+                    href={`/leads?service=${row.service_id}`}
+                    className="block group"
+                  >
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="inline-flex items-center gap-2">
+                        <span className="text-base">{svc.emoji}</span>
+                        <span className="text-foreground/90 group-hover:text-foreground">{svc.label}</span>
+                      </span>
+                      <span className="text-muted-foreground tabular-nums">{row.value}</span>
+                    </div>
+                    <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-white/[0.04]">
+                      <motion.span
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 0.7, delay: i * 0.05, ease: [0.22, 1, 0.36, 1] }}
+                        className="block h-full rounded-full bg-gradient-to-r from-emerald-400 via-cyan-400 to-violet-400"
+                      />
+                    </div>
+                  </Link>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader className="flex-row items-center justify-between">
+            <div>
+              <CardTitle className="inline-flex items-center gap-2">
+                <Clock className="h-4 w-4 text-amber-300" /> Needs follow-up
+              </CardTitle>
+              <CardDescription>Contacted &gt; 7 days ago, no reply yet</CardDescription>
+            </div>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/leads?status=contacted">
+                View all <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </Button>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[64px]" />)
+            ) : !stats?.followUps?.length ? (
+              <p className="text-sm text-muted-foreground">
+                Nobody is overdue right now. Anyone you contact will land here once 7 days pass without a reply.
+              </p>
+            ) : (
+              stats.followUps.map((l, i) => <LeadRow key={l.id} lead={l} index={i} dense />)
+            )}
           </CardContent>
         </Card>
 

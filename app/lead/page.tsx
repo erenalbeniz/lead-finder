@@ -106,6 +106,19 @@ function LeadDetailPage() {
 
   useEffect(() => { if (Number.isFinite(id) && id > 0) load(); }, [id]);
 
+  // Auto-generate the outreach bundle once the lead has loaded so the
+  // studio shows the prepared service-tailored draft without a second click.
+  useEffect(() => {
+    if (!lead || bundle) return;
+    try {
+      const res = apiOutreach({ lead_id: lead.id });
+      setBundle(res.bundle);
+    } catch {
+      // ignore — user can hit Generate manually
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead?.id]);
+
   async function runCheck(deep = false) {
     if (!lead) return;
     setChecking(true);

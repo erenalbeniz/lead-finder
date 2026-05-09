@@ -19,6 +19,7 @@ interface Ctx {
   cat: string;
   sender: string;
   studio: string;
+  bookingLink: string;
 }
 
 /**
@@ -29,17 +30,18 @@ interface Ctx {
  */
 export function generateOutreach(
   lead: Lead,
-  opts?: { senderName?: string; studioName?: string; service?: ServiceDef | null },
+  opts?: { senderName?: string; studioName?: string; bookingLink?: string | null; service?: ServiceDef | null },
 ): OutreachBundle {
   const sender = opts?.senderName?.trim() || SENDER_DEFAULT;
   const studio = opts?.studioName?.trim() || STUDIO_DEFAULT;
+  const bookingLink = opts?.bookingLink?.trim() || "";
   const service = opts?.service ?? null;
 
   const cat = (lead.category ?? "business").toLowerCase();
   const town = (lead.location ?? "Malta").split(",")[0].trim();
   const niceName = lead.business_name.trim();
   const ownerLine = lead.owner_name ? `Hi ${lead.owner_name.split(" ")[0]},` : `Hi ${niceName} team,`;
-  const ctx: Ctx = { niceName, ownerLine, town, cat, sender, studio };
+  const ctx: Ctx = { niceName, ownerLine, town, cat, sender, studio, bookingLink };
 
   if (service) {
     const pitch = SERVICE_PITCHES[service.id];
@@ -58,7 +60,7 @@ export function generateOutreach(
   const businessImpact = impactLine(lead, problems, cat);
   const suggestedFix = fixLine(lead, problems);
   const whatsapp = buildWhatsApp({ niceName, town, sender, studio, problems });
-  const email = buildEmail({ niceName, ownerLine, town, cat, sender, studio, problems, businessImpact, suggestedFix });
+  const email = buildEmail({ niceName, ownerLine, town, cat, sender, studio, problems, businessImpact, suggestedFix, bookingLink });
   return { problems, businessImpact, suggestedFix, whatsapp, email };
 }
 
@@ -154,8 +156,9 @@ function buildEmail(args: {
   problems: string[];
   businessImpact: string;
   suggestedFix: string;
+  bookingLink: string;
 }) {
-  const { niceName, ownerLine, sender, studio, problems, businessImpact, suggestedFix, town } = args;
+  const { niceName, ownerLine, sender, studio, problems, businessImpact, suggestedFix, town, bookingLink } = args;
   const subject = `Quick idea for ${niceName}'s website`;
   const body = [
     ownerLine,
@@ -169,10 +172,11 @@ function buildEmail(args: {
     `If it's useful: ${suggestedFix}`,
     "",
     `Happy to send a 2-minute screen recording walking through it — no pitch, just the changes. Reply with a yes and I'll send it today.`,
+    bookingLink ? `Or grab a 15-min call: ${bookingLink}` : "",
     "",
     `Best,`,
     sender,
-  ].join("\n");
+  ].filter((line, idx, arr) => !(line === "" && arr[idx - 1] === "")).join("\n");
   return { subject, body };
 }
 
@@ -196,7 +200,7 @@ function emailFromTemplate(
   intro: string,
   subject: string,
 ): { subject: string; body: string } {
-  const { ownerLine, sender, studio } = ctx;
+  const { ownerLine, sender, studio, bookingLink } = ctx;
   const body = [
     ownerLine,
     "",
@@ -209,10 +213,11 @@ function emailFromTemplate(
     `What I'd do: ${parts.suggestedFix}`,
     "",
     `If you're up for it, reply "yes" and I'll send a 2-minute Loom walking through the exact changes — no pitch deck, no obligation.`,
+    bookingLink ? `Or book a 15-min call directly: ${bookingLink}` : "",
     "",
     `Best,`,
     sender,
-  ].join("\n");
+  ].filter((line, idx, arr) => !(line === "" && arr[idx - 1] === "")).join("\n");
   return { subject, body };
 }
 

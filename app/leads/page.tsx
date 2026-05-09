@@ -1,9 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Download, Filter, Loader2, Search } from "lucide-react";
+import { Download, Filter, Loader2, Mail, Search, Sparkles } from "lucide-react";
+import { toast } from "sonner";
+import { SERVICES } from "@/lib/services";
+import { apiLeadHasDraft, apiOutreach } from "@/lib/api";
 import { PageHeader } from "@/components/page-header";
 import { PageTransition } from "@/components/page-transition";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +26,8 @@ import { LeadRow } from "@/components/lead-row";
 import type { Lead } from "@/lib/types";
 import { apiExport, apiLeadsList } from "@/lib/api";
 
+const ALL_SERVICES = "all";
+
 const STATUSES = ["all", "new", "contacted", "replied", "interested", "closed", "rejected"] as const;
 const SITE_STATUSES = ["all", "none", "outdated", "not_mobile", "modern", "unknown"] as const;
 const SORTS = [
@@ -31,7 +37,15 @@ const SORTS = [
   { v: "name", label: "Name (A→Z)" },
 ];
 
-export default function LeadsPage() {
+export default function LeadsPageWrapper() {
+  return (
+    <Suspense fallback={<PageTransition><Skeleton className="h-12 w-1/2" /><Skeleton className="h-72" /></PageTransition>}>
+      <LeadsPage />
+    </Suspense>
+  );
+}
+
+function LeadsPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
@@ -42,8 +56,10 @@ export default function LeadsPage() {
   const [location, setLocation] = useState("all");
   const [status, setStatus] = useState<string>("all");
   const [siteStatus, setSiteStatus] = useState<string>("all");
+  const [serviceFilter, setServiceFilter] = useState<string>(ALL_SERVICES);
   const [minScore, setMinScore] = useState(1);
   const [sort, setSort] = useState("score_desc");
+  const [drafting, setDrafting] = useState(false);
 
   function load() {
     setLoading(true);
@@ -53,6 +69,7 @@ export default function LeadsPage() {
       location,
       status: status as any,
       website_status: siteStatus as any,
+      service_id: serviceFilter as any,
       min_score: minScore,
       sort: sort as any,
     });
@@ -62,8 +79,50 @@ export default function LeadsPage() {
     setLoading(false);
   }
 
+  async function draftOutreachForAll() {
+    const targets = leads.filter((l) => l.service_id && !apiLeadHasDraft(l.id));
+    if (!targets.length) {
+      toast.info("Every visible lead with a service already has a draft.");
+      return;
+    }
+    setDrafting(true);
+    try {
+      for (const lead of targets) {
+        try {
+          apiOutreach({ lead_id: lead.id, log: "draft", service_id: lead.service_id });
+        } catch {
+          // ignore individual failures
+        }
+      }
+      toast.success(`Drafted outreach for ${targets.length} lead${targets.length === 1 ? "" : "s"}`, {
+        description: "Open any lead to copy or send the prepared email + WhatsApp",
+      });
+    } finally {
+      setDrafting(false);
+    }
+  }
+
+  const sp = useSearchParams();
   useEffect(() => {
-    load();
+    const svc = sp.get("service");
+    const st = sp.get("status");
+    if (svc) setServiceFilter(svc);
+    if (st) setStatus(st);
+    setLoading(true);
+    const res = apiLeadsList({
+      q,
+      category,
+      location,
+      status: (st ?? status) as any,
+      website_status: siteStatus as any,
+      service_id: (svc ?? serviceFilter) as any,
+      min_score: minScore,
+      sort: sort as any,
+    });
+    setLeads(res.leads ?? []);
+    setCategories(res.categories ?? []);
+    setLocations(res.locations ?? []);
+    setLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -74,6 +133,7 @@ export default function LeadsPage() {
       location,
       status: status as any,
       website_status: siteStatus as any,
+      service_id: serviceFilter as any,
       min_score: minScore,
       sort: sort as any,
     });
@@ -87,6 +147,10 @@ export default function LeadsPage() {
         description="Filter, sort, and export. Click any lead to open the full audit and outreach panel."
         actions={
           <>
+            <Button variant="outline" onClick={draftOutreachForAll} disabled={drafting || loading}>
+              {drafting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+              Draft outreach for all
+            </Button>
             <Button variant="outline" onClick={exportNow}>
               <Download className="h-4 w-4" /> Export CSV
             </Button>
@@ -115,6 +179,21 @@ export default function LeadsPage() {
             <FilterSelect label="Location" value={location} onChange={setLocation} options={["all", ...locations]} />
             <FilterSelect label="Outreach" value={status} onChange={setStatus} options={STATUSES as unknown as string[]} />
             <FilterSelect label="Website" value={siteStatus} onChange={setSiteStatus} options={SITE_STATUSES as unknown as string[]} />
+            <div className="md:col-span-2 space-y-2">
+              <Label>Service</Label>
+              <Select value={serviceFilter} onValueChange={setServiceFilter}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={ALL_SERVICES}>All services</SelectItem>
+                  {SERVICES.map((s) => (
+                    <SelectItem key={s.id} value={s.id}>
+                      <span className="mr-2">{s.emoji}</span>
+                      {s.short}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
             <div className="md:col-span-2 space-y-2">
               <Label>Min score: {minScore}</Label>
               <input

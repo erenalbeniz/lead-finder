@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
-import { KeyRound, User, Building2, MapPin, Save, Loader2, ShieldCheck } from "lucide-react";
+import { KeyRound, User, Building2, MapPin, Save, Loader2, ShieldCheck, CalendarDays } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { PageTransition } from "@/components/page-transition";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -18,6 +18,7 @@ interface SettingsData {
   sender_name: string | null;
   studio_name: string | null;
   default_location: string | null;
+  booking_link: string | null;
 }
 interface EnvFlags { has_env_key: boolean; enable_playwright: boolean; }
 
@@ -27,6 +28,7 @@ export default function SettingsPage() {
     sender_name: "",
     studio_name: "",
     default_location: "",
+    booking_link: "",
   });
   const [env, setEnv] = useState<EnvFlags>({ has_env_key: false, enable_playwright: false });
   const [loading, setLoading] = useState(true);
@@ -40,6 +42,7 @@ export default function SettingsPage() {
       sender_name: d.settings.sender_name ?? "",
       studio_name: d.settings.studio_name ?? "",
       default_location: d.settings.default_location ?? "",
+      booking_link: d.settings.booking_link ?? "",
     });
     setEnv(d.env);
     setLoading(false);
@@ -51,6 +54,7 @@ export default function SettingsPage() {
       sender_name: data.sender_name ?? "",
       studio_name: data.studio_name ?? "",
       default_location: data.default_location ?? "",
+      booking_link: data.booking_link ?? "",
     };
     apiSettingsSet(payload);
     setSaving(false);
@@ -111,6 +115,17 @@ export default function SettingsPage() {
             <div className="space-y-1.5">
               <Label className="inline-flex items-center gap-2"><MapPin className="h-3 w-3" /> Default location bias</Label>
               <Input value={data.default_location ?? ""} onChange={(e) => setData((s) => ({ ...s, default_location: e.target.value }))} placeholder="Sliema" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="inline-flex items-center gap-2"><CalendarDays className="h-3 w-3" /> Booking / call link</Label>
+              <Input
+                value={data.booking_link ?? ""}
+                onChange={(e) => setData((s) => ({ ...s, booking_link: e.target.value }))}
+                placeholder="https://cal.com/yourname/15min"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Auto-appended to every drafted email so leads can book a call without replying.
+              </p>
             </div>
           </CardContent>
         </Card>
