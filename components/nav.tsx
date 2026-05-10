@@ -10,6 +10,7 @@ import {
   MessageSquare,
   Settings,
   Sparkles,
+  Map,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -17,6 +18,7 @@ const items = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/search", label: "Lead Search", icon: Search },
   { href: "/leads", label: "Lead List", icon: Users },
+  { href: "/map", label: "Lead Map", icon: Map },
   { href: "/outreach", label: "Outreach", icon: MessageSquare },
   { href: "/settings", label: "Settings", icon: Settings },
 ];

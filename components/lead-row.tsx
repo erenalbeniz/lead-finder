@@ -2,13 +2,46 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { Globe, Phone, MapPin, ExternalLink, ChevronRight } from "lucide-react";
+import { Globe, Phone, MapPin, ExternalLink, ChevronRight, MessageCircle, Mail } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import type { Lead } from "@/lib/types";
 import { priorityColor, siteStatusColor, siteStatusLabel, statusColor } from "@/lib/utils";
 import { cn } from "@/lib/utils";
+import { apiLeadDraft, apiOutreach } from "@/lib/api";
+import { findService } from "@/lib/services";
 
 export function LeadRow({ lead, index = 0, dense = false }: { lead: Lead; index?: number; dense?: boolean }) {
+  const service = findService(lead.service_id);
+
+  function ensureBundleAndGet(channel: "email" | "whatsapp"): { whatsapp: string; email: { subject: string; body: string } } {
+    const cached = apiLeadDraft(lead.id);
+    if (cached.email && cached.whatsapp) return { email: cached.email, whatsapp: cached.whatsapp };
+    const { bundle } = apiOutreach({ lead_id: lead.id, log: "draft" });
+    return bundle;
+  }
+
+  function openWhatsApp(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!lead.phone) return;
+    const { whatsapp } = ensureBundleAndGet("whatsapp");
+    const number = lead.phone.replace(/[^\d+]/g, "");
+    const msg = encodeURIComponent(whatsapp);
+    window.open(`https://wa.me/${number}?text=${msg}`, "_blank", "noopener,noreferrer");
+    apiOutreach({ lead_id: lead.id, log: "whatsapp" });
+  }
+
+  function openMail(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    const { email } = ensureBundleAndGet("email");
+    const target = lead.email ?? "";
+    const subject = encodeURIComponent(email.subject);
+    const body = encodeURIComponent(email.body);
+    window.open(`mailto:${target}?subject=${subject}&body=${body}`, "_blank", "noopener,noreferrer");
+    apiOutreach({ lead_id: lead.id, log: "email" });
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -36,6 +69,15 @@ export function LeadRow({ lead, index = 0, dense = false }: { lead: Lead; index?
             <div className="font-medium truncate">{lead.business_name}</div>
             <Badge className={cn("border", siteStatusColor(lead.website_status))}>{siteStatusLabel(lead.website_status)}</Badge>
             <Badge className={cn("border", statusColor(lead.outreach_status))}>{lead.outreach_status}</Badge>
+            {service && (
+              <span
+                className="inline-flex items-center gap-1 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-medium text-emerald-200"
+                title={`Pitching ${service.label}`}
+              >
+                <span>{service.emoji}</span>
+                {service.short}
+              </span>
+            )}
           </div>
           {!dense && (
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -64,6 +106,28 @@ export function LeadRow({ lead, index = 0, dense = false }: { lead: Lead; index?
         </div>
 
         <div className="flex items-center gap-2">
+          {lead.phone && (
+            <button
+              type="button"
+              onClick={openWhatsApp}
+              className="hidden md:grid h-8 w-8 place-items-center rounded-lg border border-emerald-400/20 bg-emerald-400/[0.06] text-emerald-200 hover:bg-emerald-400/[0.12] hover:border-emerald-400/40 transition"
+              title={`Send WhatsApp${service ? ` · ${service.short}` : ""}`}
+              aria-label="Send WhatsApp"
+            >
+              <MessageCircle className="h-3.5 w-3.5" />
+            </button>
+          )}
+          {(lead.email || true) && (
+            <button
+              type="button"
+              onClick={openMail}
+              className="hidden md:grid h-8 w-8 place-items-center rounded-lg border border-violet-400/20 bg-violet-400/[0.06] text-violet-200 hover:bg-violet-400/[0.12] hover:border-violet-400/40 transition"
+              title={`Open email draft${service ? ` · ${service.short}` : ""}`}
+              aria-label="Open email"
+            >
+              <Mail className="h-3.5 w-3.5" />
+            </button>
+          )}
           {lead.website && (
             <a
               href={lead.website}

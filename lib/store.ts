@@ -1,6 +1,6 @@
 "use client";
 
-import type { Lead, LeadInput, OutreachStatus, WebsiteStatus } from "./types";
+import type { Lead, LeadInput, OutreachStatus, SavedSearch, WebsiteStatus } from "./types";
 
 /**
  * Browser localStorage-backed data store.
@@ -12,8 +12,10 @@ const KEYS = {
   leads: "lf:leads",
   outreach: "lf:outreach",
   settings: "lf:settings",
+  savedSearches: "lf:savedSearches",
   nextId: "lf:nextId",
   nextOutreachId: "lf:nextOutreachId",
+  nextSavedSearchId: "lf:nextSavedSearchId",
 };
 
 function isBrowser() {
@@ -66,6 +68,7 @@ export function listLeads(filters: {
   location?: string;
   status?: OutreachStatus | "all";
   websiteStatus?: WebsiteStatus | "all";
+  serviceId?: string | "all";
   minScore?: number;
   maxScore?: number;
   sort?: "score_desc" | "score_asc" | "recent" | "name";
@@ -96,6 +99,9 @@ export function listLeads(filters: {
   }
   if (filters.websiteStatus && filters.websiteStatus !== "all") {
     items = items.filter((l) => l.website_status === filters.websiteStatus);
+  }
+  if (filters.serviceId && filters.serviceId !== "all") {
+    items = items.filter((l) => l.service_id === filters.serviceId);
   }
   if (filters.minScore != null) {
     items = items.filter((l) => l.priority_score >= filters.minScore!);
@@ -162,6 +168,7 @@ export function upsertLead(input: LeadInput): Lead {
         lat: input.lat ?? existing.lat,
         lng: input.lng ?? existing.lng,
         last_checked_at: input.last_checked_at ?? existing.last_checked_at,
+        service_id: input.service_id ?? existing.service_id ?? null,
         updated_at: now,
       };
       items[idx] = merged;
@@ -195,6 +202,7 @@ export function upsertLead(input: LeadInput): Lead {
     created_at: now,
     updated_at: now,
     last_checked_at: input.last_checked_at ?? null,
+    service_id: input.service_id ?? null,
   };
   items.push(lead);
   write(KEYS.leads, items);
@@ -230,6 +238,7 @@ export function updateLead(id: number, patch: Partial<Lead> & { issues?: string[
       lat: patch.lat,
       lng: patch.lng,
       last_checked_at: patch.last_checked_at,
+      service_id: patch.service_id,
     }),
     updated_at: Date.now(),
   };
@@ -321,7 +330,24 @@ export function leadStats() {
     });
   }
 
-  return { totals: t, byCategory, byStatus, byScore, activity };
+  const serviceMap = new Map<string, number>();
+  for (const l of items) {
+    if (!l.service_id) continue;
+    if (l.outreach_status === "closed" || l.outreach_status === "rejected") continue;
+    serviceMap.set(l.service_id, (serviceMap.get(l.service_id) ?? 0) + 1);
+  }
+  const byService = Array.from(serviceMap.entries())
+    .map(([service_id, value]) => ({ service_id, value }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+
+  const SEVEN_DAYS = 7 * 86_400_000;
+  const followUps = items
+    .filter((l) => l.outreach_status === "contacted" && Date.now() - l.updated_at > SEVEN_DAYS)
+    .sort((a, b) => a.updated_at - b.updated_at)
+    .slice(0, 6);
+
+  return { totals: t, byCategory, byStatus, byScore, byService, activity, followUps };
 }
 
 export function distinctCategories(): string[] {
@@ -353,6 +379,44 @@ export function listOutreachLog(lead_id: number): OutreachLogEntry[] {
   return read<OutreachLogEntry[]>(KEYS.outreach, [])
     .filter((o) => o.lead_id === lead_id)
     .sort((a, b) => b.created_at - a.created_at);
+}
+
+export function getDraft(lead_id: number, channel: "draft-email" | "draft-whatsapp"): OutreachLogEntry | null {
+  const log = read<OutreachLogEntry[]>(KEYS.outreach, []);
+  const match = log
+    .filter((o) => o.lead_id === lead_id && o.channel.startsWith(channel))
+    .sort((a, b) => b.created_at - a.created_at);
+  return match[0] ?? null;
+}
+
+export function leadHasDraft(lead_id: number): boolean {
+  const log = read<OutreachLogEntry[]>(KEYS.outreach, []);
+  return log.some((o) => o.lead_id === lead_id && o.channel.startsWith("draft-"));
+}
+
+// ---------- Saved searches ----------
+export function listSavedSearches(): SavedSearch[] {
+  return read<SavedSearch[]>(KEYS.savedSearches, []).sort((a, b) => b.created_at - a.created_at);
+}
+
+export function saveSavedSearch(input: Omit<SavedSearch, "id" | "created_at">): SavedSearch {
+  const items = read<SavedSearch[]>(KEYS.savedSearches, []);
+  const entry: SavedSearch = {
+    id: nextId(KEYS.nextSavedSearchId),
+    created_at: Date.now(),
+    ...input,
+  };
+  items.push(entry);
+  write(KEYS.savedSearches, items);
+  return entry;
+}
+
+export function deleteSavedSearch(id: number) {
+  const items = read<SavedSearch[]>(KEYS.savedSearches, []);
+  write(
+    KEYS.savedSearches,
+    items.filter((s) => s.id !== id),
+  );
 }
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {

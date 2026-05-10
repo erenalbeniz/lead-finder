@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import {
@@ -16,6 +16,8 @@ import {
   Sparkles,
   Zap,
   Target,
+  Bookmark,
+  X,
 } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { PageTransition } from "@/components/page-transition";
@@ -35,7 +37,16 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { MALTA_CATEGORIES, MALTA_LOCATIONS } from "@/lib/places";
 import type { SearchHit } from "@/lib/types";
-import { apiCheck, apiLeadCreate, apiSearch } from "@/lib/api";
+import {
+  apiCheck,
+  apiLeadCreate,
+  apiOutreach,
+  apiSavedSearchDelete,
+  apiSavedSearchSave,
+  apiSavedSearchesList,
+  apiSearch,
+} from "@/lib/api";
+import type { SavedSearch } from "@/lib/types";
 import { SERVICES, findService, matchingServices, type ServiceDef, type ServiceHit } from "@/lib/services";
 import { cn } from "@/lib/utils";
 
@@ -59,6 +70,44 @@ export default function SearchPage() {
   const [loading, setLoading] = useState(false);
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+
+  useEffect(() => {
+    setSavedSearches(apiSavedSearchesList().searches);
+  }, []);
+
+  function refreshSavedSearches() {
+    setSavedSearches(apiSavedSearchesList().searches);
+  }
+
+  function saveCurrentSearch() {
+    const cat = effectiveCategory || "any";
+    const loc = location === ALL_MALTA ? "all of Malta" : location;
+    const svc = activeService ? activeService.short : "any";
+    const name = `${cat} · ${loc} · ${svc}`;
+    apiSavedSearchSave({
+      name,
+      category: effectiveCategory,
+      location: location === ALL_MALTA ? "" : location,
+      service_id: activeService?.id ?? null,
+      only_matches: onlyMatches,
+    });
+    refreshSavedSearches();
+    toast.success("Search bookmarked");
+  }
+
+  function loadSavedSearch(s: SavedSearch) {
+    setCategory(s.category);
+    setCustomCategory("");
+    setLocation(s.location || ALL_MALTA);
+    setServiceId(s.service_id ?? ANY_SERVICE);
+    setOnlyMatches(s.only_matches);
+  }
+
+  function deleteSaved(id: number) {
+    apiSavedSearchDelete(id);
+    refreshSavedSearches();
+  }
 
   const effectiveCategory = customCategory.trim() || category;
   const activeService: ServiceDef | null = serviceId === ANY_SERVICE ? null : findService(serviceId);
@@ -116,10 +165,7 @@ export default function SearchPage() {
         issues = ["No website at all"];
         website_status = "none";
       }
-      const opportunityNote = activeService
-        ? `Service opportunity: ${activeService.label}${activeService.match(hit as ServiceHit) ? " (strong fit)" : ""}`
-        : null;
-      apiLeadCreate({
+      const { lead } = apiLeadCreate({
         place_id: hit.place_id,
         business_name: hit.business_name,
         category: hit.category,
@@ -136,11 +182,22 @@ export default function SearchPage() {
         lng: hit.lng,
         issues,
         website_status,
-        notes: opportunityNote,
+        service_id: activeService?.id ?? null,
         last_checked_at: autoCheck ? Date.now() : undefined,
       });
       setSavedIds((s) => new Set(s).add(hit.place_id));
-      toast.success(`Saved ${hit.business_name}`);
+      if (activeService) {
+        try {
+          apiOutreach({ lead_id: lead.id, log: "draft", service_id: activeService.id });
+          toast.success(`Saved ${hit.business_name}`, {
+            description: `Drafted ${activeService.label} email + WhatsApp — open the lead to send`,
+          });
+        } catch {
+          toast.success(`Saved ${hit.business_name}`);
+        }
+      } else {
+        toast.success(`Saved ${hit.business_name}`);
+      }
     } catch (e: any) {
       toast.error(e.message);
     } finally {
@@ -168,6 +225,36 @@ export default function SearchPage() {
         title="Discover businesses worth helping."
         description="Searches OpenStreetMap's public business directory across Malta — no API key, no billing. Only public info is collected."
       />
+
+      {savedSearches.length > 0 && (
+        <div className="flex items-center gap-2 flex-wrap text-xs">
+          <span className="text-muted-foreground inline-flex items-center gap-1">
+            <Bookmark className="h-3.5 w-3.5" /> Saved
+          </span>
+          {savedSearches.map((s) => (
+            <span
+              key={s.id}
+              className="group inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] pl-3 pr-1 py-1 text-foreground/80 hover:bg-white/[0.08] transition-colors"
+            >
+              <button
+                type="button"
+                onClick={() => loadSavedSearch(s)}
+                className="font-medium"
+              >
+                {s.name}
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteSaved(s.id)}
+                className="grid h-5 w-5 place-items-center rounded-full text-muted-foreground hover:text-foreground hover:bg-white/10"
+                aria-label="Remove saved search"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       <Card className="ring-frame">
         <CardContent className="p-5 md:p-6">
@@ -207,10 +294,18 @@ export default function SearchPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="md:col-span-2">
-              <Button onClick={runSearch} className="w-full h-10" disabled={loading}>
+            <div className="md:col-span-2 flex gap-2">
+              <Button onClick={runSearch} className="flex-1 h-10" disabled={loading}>
                 {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <SearchIcon className="h-4 w-4" />}
                 Search
+              </Button>
+              <Button
+                variant="outline"
+                onClick={saveCurrentSearch}
+                className="h-10 px-3"
+                title="Bookmark this search"
+              >
+                <Bookmark className="h-4 w-4" />
               </Button>
             </div>
           </div>
